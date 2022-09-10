@@ -1,0 +1,611 @@
+---
+title: "IF36 - Conception de visualisations de données"
+author: "DUFON Matthieu"
+date: "19 juin 2022"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(prettydoc)
+library(readr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(seriation)
+library(reshape2)
+library(stringr)
+library(tidyr)
+library(scales)
+library(formattable)
+```
+
+```{r setup_data, echo=FALSE}
+data_hosts <- read_csv('data/olympic_hosts.csv')
+data_medals <- read_csv('data/olympic_medals.csv')
+data_results <- read_csv('data/olympic_results.csv')
+data_athletes <- read_csv('data/olympic_athletes.csv')
+```
+# **Rapport de projet**
+
+<p style="text-align:justify;">Extrait de rapport de projet. Les graphiques présents sont ceux que j'ai personnellement réalisé. L'introduction et la conclusion n'ont pas été modifiés, ils présentent donc des idées et des résultats non présents dans le corps du projet</p>
+
+## Introduction
+
+### Données
+
+<p style="text-align:justify;">Le jeu de données choisi contient diverses informations sur chaque édition des Jeux Olympiques, hiver et été, de 1986 (Athènes) à 2021 (Tokyo).
+Le jeu de données provient du site Kaggle, site web de datasets. Elles sont trouvables sur le lien suivant : <https://www.kaggle.com/datasets/piterfm/olympic-games-medals-19862018>.
+Nous avons choisi ce jeu de données car en plus de concerner un domaine qui intéresse l’ensemble du groupe, c’est également un dataset avec de nombreuses observations et de nombreuses variables qui nous permettra de visualiser un grand nombre de données.
+Le jeu de données est composé de quatre fichiers au format CSV qui correspondent à différentes catégories au sein du jeu de données : les médailles, les athlètes, les résultats et le pays d’accueil.
+Le premier fichier, olympic_medals.csv contient 12 variables et 21310 observations.</p>
+
+| Nom de la variable | Type de la variable | Commentaire |
+|-----------|-----------|-----------|
+|discipline_title|texte|Nom de la discipline|
+|slug_game|texte|ID des JO sous la forme ville-AAAA|
+|event_title|texte|Titre de l’évènement|
+|event_gender|texte|Genre des athlètes de l’événement|
+|medal_type|texte|Type de médailles (GOLD or SILVER or BRONZE)|
+|participant_type|texte|Type de participants. En équipe ou solo (Athlete or  GameTeam)|
+|participant_title|texte|Nom équipe des participants en équipe. 70% [null]|
+|athlete_url|texte|Lien URL vers le profil de l’athlète sur site officiel des JO|
+|athlete_full_name|texte|Prénom et NOM de l’athlète|
+|country_name|texte|Pays des participants|
+|country_code|texte|Pays des participants codé sur 2 lettres|
+|country_3_letters|texte|Pays des participants codé sur 3 lettres|
+
+Le deuxième fichier, olympic_athletes.csv contient 7 variables et 74731 observations.
+
+| Nom de la variable | Type de la variable | Commentaire |
+|-----------|-----------|-----------|
+|athlete_url|texte|Lien URL vers le profil de l’athlète sur site officiel des jeux olympiques|
+|athlete_full_name|texte|Prénom et NOM de l’athlète|
+|first_game|texte|Premier JO de l’athlète|
+|athlete_year_birth|numérique|Année de naissance de l’athlète|
+|athlete_medals|texte|Médaille de l’athèle sous la forme «  X G Y S Z B »|
+|games_participation|numérique|Nombre de participations à des JO|
+|bio|texte|Biographie|
+
+Le troisième fichier, olympic_results.csv contient 15 variables et 159020 observations.
+
+| Nom de la variable | Type de la variable | Commentaire |
+|-----------|-----------|-----------|
+|discipline_title|texte|Nom de la discipline|
+|event_title|texte|Titre de l’évènement|
+|slug_game|texte|ID des JO sous la forme ville-AAAA|
+|participant_type|texte|Type de participants. En équipe ou solo (Athlete or  GameTeam)|
+|medal_type|texte|Type de médailles (GOLD or SILVER or BRONZE or null)|
+|athletes|texte|Dans le cas ou participant_type = GameTeam alors Nom et Lien URL vers les profil des athlètes sur site officiel des jeux olympiques. Sinon null|
+|rank_equal|booléen|Égalité de rang avec un/des autre(s) athlète(s) sur un event pendant un JO.|
+|rank_position|numérique|Rang de l’athlète|
+|country_name|texte|Pays des participants|
+|country_code|texte|Pays des participants codé sur 2 lettres|
+|country_3_letters|texte|Pays des participants codé sur 3 lettres|
+|athlete_url|texte|Lien URL vers le profil de l’athlète sur site officiel des jeux olympiques|
+|athlete_full_name|texte|Prénom et NOM de l’athlète|
+|value_unit|numérique|Score|
+|value_type|texte|Type de score|
+
+Le quatrième fichier, olympic_hosts.csv contient 7 variables et 52 observations.
+
+| Nom de la variable | Type de la variable | Commentaire |
+|-----------|-----------|-----------|
+|game_slug|texte|ID des JO sous la forme ville-AAAA|
+|game_end_date|texte|Date de fin des JO sous la forme AAAA-MM-JJ HH :MM :SS|
+|game_start_date|texte|Date de début des JO sous la forme AAAA-MM-JJ HH :MM :SS|
+|game_location|texte|Pays des JO|
+|game_name|texte|Nom des JO sous la forme Ville AAAA|
+|game_season|texte|Saison des JO (Winter/Summer)|
+|game_year|numérique|Année des JO sous la forme AAAA|
+
+Parmi ces 41 variables, 13 sont en doublon entre plusieurs fichiers. Il y a donc en réalité 28 variables.
+
+### Plan d'analyse
+
+<p style="text-align:justify;">Les deux axes que nous allons développer sont d’une part, l’évolution de certaines variables au fil des années, mais également l’influence de certains paramètres sur les résultats des athlètes.
+Nous pensons notamment comparer la quantité de médailles en fonction des pays afin de savoir quels pays obtiennent les meilleurs résultats. Pour pousser plus loin cet aspect, nous pourrons ensuite observer l'évolution de ces données en fonction des années ou bien en fonction des catégories de sport.
+Voici plus en détail la liste de nos propositions de visualisations.</p>
+
+| Question | Informations que l'on pense obtenir | Variables à comparer | Type de graphique | Problème(s) |
+|-----------|-----------|-----------|-----------|-----------|
+|Répartition des sports les plus pratiqués|Mise en avant des sports d'athlétisme et peut être de la natation|discipline_title|plot(size)||
+|Nombre de pays participants en fonction des années|Autour de 150 avec peu d'évolutions|country_code, game_year|line chart||
+|L’année où chaque discipline est devenue mixte ?||slug_game et event_gender|bar chart||
+|Quels sont les athlètes les plus titrés (et dans quel sport)|Les champions de leur domaine comme Mickael Felbs, Teddy Rinner etc.|athlete_full_name et athlete_medals|bar chart|Faire une visualisation 3D (nom, nombre de titres, sport)|
+|Y’a-t-il bcp d’athlètes qui remportent des médailles à leur premier jeu ?|Probablement pas|athlete_full_name , first_game et medal_type|stacked bar chart|
+|Le nombre de participation est-il corrélé au nombre de médaille ?|Probablement|games_participations et athlete_medals|Nuage de point et facet grid en gardant ceux intéressants||
+|L’âge est-il corrélé avec le nombre de victoire (selon le sport) ?|Pour certains sports, l'âge apporte un avantage|athlete_medals, athlete_year_birth|Nuage de point et facet grid en gardant ceux intéressants|Traitements de données, notamment pour l'âge|
+|Répartition age et genre (par sport)|Une moyenne d'âge autour de 28 ans, à peu près similaire pour les hommes et les femmes. Moyenne qui peut changer en fonction des sports|athlete_medals, event_gender|histogram / split en deux avec les genres|Données à traiter, transformation pour avoir l'âge et le genre|
+|Comparer les médailles selon les pays|Un petit nombre de pays récolte l’ensemble des médailles|country, medals|bar chart (distribution) et/ou map (comparaison)|Il faudra décider s'il est nécessaire de faire des regroupements (Union Soviétique + Russie par exemple)|
+|Pays spécialisés dans un sport ?|La plupart des pays remportent beaucoup de médailles dans une ou plusieurs catégories|country, medals, sport|stacked bar chart||
+|Les pays accueillant ont-ils plus de médaille au moment de leur accueil ?|Probablement pas|Olympic_hosts (csv) et olympic_results (csv)|Bar chart ou nuage de point|Beaucoup de modifications sur les données pour obtenir cette visualisation|
+|Les pays accueillant ont-ils plus d’athlètes en finale ?|Probablement pas|Olympic_hosts et olympic_results|Bar chart ou nuage de point|Beaucoup de modifications sur les données pour obtenir cette visualisation|
+
+<p style="text-align:justify;">La phase de Data Cleaning représentera une partie importante de notre projet. En effet, beaucoup de données qui auraient pu être intégrées à un format numérique ont été intégrées au format texte via des énumérations. De plus, il nous faudra peut être importer certaines données supplémentaires afin de compléter notre analyse.</p>
+
+## Exploration
+
+### Traitement des données :
+
+<p style="text-align:justify;">Afin de manipuler au mieux les données présentes dans nos quatre fichiers, nous avons débuté notre projet par une phase de traitement.
+Dans un premier temps, nous avons effectué quelques modifications concernant des colonnes existantes : 
+
+- Nous avons renommé la colonne “game_slug” de data_hosts en “slug_game” afin que le nom corresponde aux autres colonnes “slug_game” des autres csv, pour faciliter les jointures. 
+
+- Nous avons remplacé les NA par des 0 pour le nombre de participations aux JO des athlètes car les athlètes ayant NA n’ont vraiment pas participé aux JO. 
+
+- Nous avons modifié la colonne first_game de data_athletes pour qu’elle soit identique aux colonnes “slug_game” des autres csv, permettant ainsi la manipulation de cette donnée.
+
+Nous avons également ajouté une colonne âge pour data_athletes, plus facile à utiliser que l’année de naissance fournie dans ce csv. Enfin, nous avons créé quelques jointures récurrentes de ces csv pour ne pas faire de la redondance à chaque visualisation. </p>
+
+```{r data_transformation, echo=FALSE}
+#On renomme la colonne game_slug en slug_game pour qu'elle corresponde avec les autres df
+data_hosts <- data_hosts %>%
+  rename(
+    slug_game=game_slug
+  )
+  
+#Création de la colonne age dans data_athletes. Age des athletes basé sur leur année de naissance car pas la date exacte
+annee_actuelle <- 2022
+naissance <- data_athletes$athlete_year_birth
+age <- annee_actuelle-naissance
+data_athletes$age = age
+
+#Modification des NA dans data_athletes$games_participations
+data_athletes$games_participations[is.na(data_athletes$games_participations)] <- 0
+
+#Modification de first_game dans data_athletes pour être identique à slug_game d'autres df
+data_athletes <- data_athletes %>%
+  mutate(first_game = str_replace(tolower(first_game), " ", "-"))
+
+#Jointure pour quelques viz
+d_results_lf_d_hosts <- left_join(data_results,data_hosts,by ="slug_game")
+d_medals_lf_d_hosts <- left_join(data_medals,data_hosts,by ="slug_game")
+d_medals_lf_d_hosts$nb_epreuve <- 1
+d_medals_lf_d_hosts_nb_epreuve <- d_medals_lf_d_hosts %>%
+  select(discipline_title,event_title,nb_epreuve) %>% 
+  distinct()%>% 
+  group_by(discipline_title) %>% 
+  count(nb_epreuve)
+d_medals_lf_d_hosts <- left_join(d_medals_lf_d_hosts,d_medals_lf_d_hosts_nb_epreuve,by ="discipline_title")
+d_athletes_lf_d_medals <- left_join(data_medals, data_athletes, by="athlete_full_name")
+d_athletes_lf_d_medals_lf_d_hosts <- left_join(d_athletes_lf_d_medals, data_hosts, by="slug_game")
+```
+
+### Combien de pays participent aux Jeux Olympiques ?
+
+<p style="text-align:justify;">Nous pensions, avant d’étudier notre jeu de données, que le nombre de pays participants évoluaient peu d’un jeu à l’autre. Nous avions estimé qu’il y avait environ 150 pays participants à chaque édition. Cette estimation concernait cependant uniquement les jeux d’étés et nous n’avions pas d’estimation pour les jeux d’hiver.
+Ainsi, nous avons réalisé un graphique montrant l’évolution du nombre de participants aux Jeux Olympiques entre 1896 et 2020. Nous avons fait la distinction entre les jeux d’été et ceux d’hiver. </p>
+
+```{r viz_nb_pays_participants, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on sélectionne la liste des pays participants avec l'année et la saison
+pays <- d_results_lf_d_hosts %>% 
+  select(slug_game, country_code, game_season) %>% 
+  distinct() %>% 
+  mutate(year = as.numeric(str_sub(slug_game, -4))) %>% 
+  select(-slug_game) %>% 
+  distinct()
+
+#on compte le nombre de participants par année et saison
+pays <- pays %>%
+  group_by(year, game_season) %>% 
+  count(year) %>% 
+  ungroup()
+
+#ggplot
+pays <- pays %>%
+  ggplot(mapping = aes(x = year, y = n, group = game_season, color = game_season)) + 
+  geom_line() +
+  geom_point() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) + 
+  scale_x_continuous(breaks=seq(1896,2020,by=2)) +
+  scale_colour_manual(values=c("Summer" = "Orange", "Winter" = "steelblue")) +
+  labs(title = "Nombre de pays participants aux Jeux Olympiques entre 1896 et 2020", x = "Année", y = "Nombre de pays", color = "Saison")
+
+print(pays)
+
+
+```
+<p style="text-align:justify;">Ce graphique représente le nombre de pays participants aux jeux olympiques depuis leur création en séparant les jeux d’été et les jeux d’hiver. Il met en évidence l'engouement de plus en plus important pour les jeux olympiques de manière générale, que ce soit pour les jeux d’été ou d’hiver. Les jeux d’été restent cependant bien plus attractifs que les jeux d’hiver. Le graphique nous montre également que les JO n’ont été annulés que pendant les guerres mondiales et jamais à aucun autre moment. En 1904, on observe la première diminution du nombre de participants mais il ne semble pas y avoir d’explications à cette diminution. En 1924, les JO d’hiver sont créés et ont lieu en même temps que les JO d’été. En 1932, on observe la première diminution explicable du nombre de participants. Cette diminution est constatée pour les JO d’été et d’hiver et fait probablement suite à la crise économique de 1929 qui a débuté aux États Unis. Entre les années 1972 et 1980, les JO d’été connaissent une très grosse diminution du nombre de participants. En effet, en 1972, un attentat a lieu lors des JO, ce qui a probablement provoqué des craintes pour les JO à venir. De plus, des boycotts importants ont également eu lieu en 1976 et 1980 pour des raisons géopolitiques. En 1994, les premiers JO d’hiver ne se déroulant pas en même temps que les JO d’été ont lieu. C’est depuis cette date que les JO d’été et d’hiver ont lieu en décalé. Jusqu’en 2020, le nombre de participants continue de croître, à l’exception justement de l’année 2020 ou certains pays décident de ne pas participer en raison de la crise sanitaire. 
+
+Notre estimation de départ était donc incorrecte, nous ne pensions pas que l’évolution du nombre de participants serait aussi marquée. De plus, nous avons pu avoir les informations que nous ne savions pas estimer pour les JO d’hiver.</p>
+
+
+### À partir de quelle année les disciplines sont-elles devenues mixtes ?
+
+<p style="text-align:justify;">Lorsque nous nous sommes posés cette question, nous n’avions pas trop d’idée de comment y répondre. Nous pensions cependant que toutes les disciplines présentes aux JO aujourd’hui étaient mixtes.</p>
+```{r viz_annee_sport_mixte, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on sélectionne les colonnes qui nous intéressent et on supprime les sports en Open ou Mixt
+mixt <- data_medals %>% 
+  select(slug_game, discipline_title, event_gender) %>% 
+  mutate(year = str_sub(slug_game, -4)) %>% 
+  select(-slug_game) %>% 
+  distinct() %>% 
+  filter(event_gender == "Men" | event_gender == "Women")
+
+#on filtre pour ne garder que les épreuves qui ne concenent pas qu'une catégorie
+mixt <- mixt %>%
+  group_by(year, discipline_title) %>% 
+  count(year) %>% 
+  filter(n > 1) %>% 
+  select(-n)
+
+#on filtre pour ne garder que l'année où le sport est devenu mixte
+mixt <- mixt %>%
+  mutate(year = as.integer(year)) %>% 
+  group_by(discipline_title) %>% 
+  filter(year == min(year))
+
+#on effectue un tri pour définir l'ordre d'affichage sur le ggplot
+mixt <- mixt %>%
+  ungroup() %>% 
+  group_by(year) %>% 
+  arrange(desc(discipline_title), .by_group = TRUE) %>%
+  mutate(year = as.character(year)) %>% 
+  mutate(discipline_title = factor(discipline_title, levels=discipline_title))
+
+#ggplot  
+mixt <- mixt %>%
+  ggplot(mapping = aes(x = year, y = discipline_title)) + 
+  geom_bin2d(show.legend = FALSE) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) + 
+  labs(title = "Création d'une épreuve homme et d'une épreuve femme par sport", x = "Année", y = "Nom de la discipline")
+
+print(mixt)
+
+
+```
+<p style="text-align:justify;">Ce graphique représente la première année où une épreuve masculine ainsi qu’une épreuve féminine sont apparues pour chaque sport. On remarque une augmentation plutôt linéaire avec quelques pics d’augmentation. Entre 1988 et 2000, plus de nouveaux sports que d’habitude deviennent mixtes. À cette période, de nouveaux sports apparaissent lors des JO d’été et d’hiver, notamment grâce à la séparation des deux saisons de JO. La seconde augmentation marquante a lieu en 2020 où de nombreux nouveaux sports apparaissent aux JO d’été. Cependant, il est intéressant de noter que certains sports présents dans nos deux premiers graphiques ne sont pas présents dans celui-ci. Ils n’ont donc jamais été rendus mixtes. Il pourrait notamment s’agir des sports qui n’ont été présents que pour une courte durée puisqu’on peut par exemple remarquer l’absence de la pelote basque qui avait été introduite uniquement en 1900.
+
+Nous avons donc pu obtenir des informations intéressantes que nous ne savions pas estimer grâce à la réalisation de cette visualisation.</p>
+
+### Quels pays remportent le plus de médailles ?
+
+<p style="text-align:justify;">Lors de notre proposition de dataset, nous avions proposé comme réponse à cette question qu’un petit nombre de pays remportait l’ensemble des médailles des Jeux Olympiques. Pour voir si nos estimations étaient correctes, nous avons réalisé un bar chart montrant le nombre de médailles récoltées par chaque pays.</p>
+```{r viz_pays_plus_de_médailles, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on retire les données en doublon à cause des médailles obtenues par équipe
+paysmedals <- data_medals %>% 
+  select(-participant_title, -athlete_url, -athlete_full_name) %>%
+  distinct()
+
+#on compte le nombre de médailles par pays
+paysmedals <- paysmedals %>%
+  select(country_name) %>% 
+  group_by(country_name) %>% 
+  count(country_name)
+
+#on effectue un tri pour définir l'ordre d'affichage sur le ggplot
+paysmedals <- paysmedals %>%
+  ungroup() %>%
+  arrange(desc(n)) %>%
+  mutate(country_name = fct_reorder(country_name, desc(n), .desc=TRUE))
+
+ #on se limite au 20 premiers pour que le graph soit lisible
+paysmedals <- paysmedals[1:20,]
+
+#ggplot
+paysmedals <- paysmedals %>%
+  ggplot(aes(y = country_name, x = n)) + 
+  geom_col(position = "dodge", width = 0.75, fill = "steelblue") + 
+  geom_text(aes(label=n), vjust=0.5, size=3.5) +
+  labs(title = "Top 20 des pays ayant remporté le plus de médailles aux JO (été + hiver) entre 1896 et 2020", y = "Pays", x = "Nombre de médailles")
+
+print(paysmedals)
+
+
+```
+<p style="text-align:justify;">Ce graphique est un classement des pays ayant obtenu le plus de médailles aux jeux olympiques. Nous avons limité ce classement à un top 20 afin d’assurer une bonne lisibilité du graphique. Comme on peut s’y attendre, les États-Unis sont en tête du classement avec presque 3000 médailles récoltées entre 1896 et 2020. L’écart avec les deuxième du classement est très important. Il est intéressant de noter qu’on retrouve l’URSS en deuxième place du classement. La Russie se trouve en dixième position. Même en additionnant les médailles de l’URSS et de la Russie, les USA resteraient premiers avec une avance importante. L’Allemagne, qui se classe troisième, est également séparée de l’Allemagne de l’est classée quatorzième. De même, en additionnant les médailles récoltées, le début du classement ne changerait pas.
+On remarque tout de même que les pays développés ou en fin de développement sont classés dans le haut du classement concernant le nombre de médailles remportées. 
+
+Après avoir réalisé ce graphique, nous nous sommes posés une autre question : Comment les États-Unis remportent-ils autant de médailles ? Nous avons voulu voir si cela était dû à des performances impressionnantes dans un ou quelques sports en particulier. 
+
+```{r viz_répartition_médailles_US, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on compte le nombre de médailles obtenues par sport pour les USA
+usaspecial <- data_medals %>% 
+  select(discipline_title,country_name) %>% 
+  group_by(country_name,discipline_title) %>% 
+  filter(country_name == "United States of America") %>% 
+  count(country_name)
+
+#on effectue un tri pour définir l'ordre d'affichage sur le ggplot
+usaspecial <- usaspecial %>%
+  ungroup() %>% 
+  arrange(desc(n)) %>%
+  mutate(discipline_title = fct_reorder(discipline_title, desc(n), .desc=TRUE))
+
+#on se limite au 20 premiers pour que le graph soit lisible
+usaspecial <- usaspecial[1:20,]
+
+#ggplot
+usaspecial <- usaspecial %>%
+  ggplot(aes(y = discipline_title, x = n)) + 
+  geom_col(position="dodge", fill="steelblue") +
+  geom_text(aes(label=n), vjust=0.5, size=3.5) +
+  labs(title = "Top 20 des sports qui ont rapporté le plus de médailles aux USA entre 1896 et 2020", y = "Sport", x = "Nombre de médailles")
+
+print(usaspecial)
+
+
+```
+<p style="text-align:justify;">Cette visualisation montre les 20 sports qui ont rapporté le plus de médailles aux États-Unis lors des jeux olympiques. Deux sports se démarquent fortement : l’athlétisme et la natation avec respectivement plus de 800 et presque 600 médailles pour chacun de ces sports. Les autres sports ayant rapporté le plus de médailles aux États-Unis ont des scores plus modestes avec moins de 150 médailles chacun. 
+
+Cela répond ainsi à notre question : les États-Unis sont très forts dans deux sports principaux. On peut cependant nuancer cette conclusion. Ces sports ont en effet un fort taux de participation, il est donc normal que les États-Unis obtiennent plus de médailles grâce à ces derniers.
+Sur Shiny, cette visualisation peut être effectuée avec n’importe quel pays.</p>
+
+### Y a-t-il beaucoup d'athlètes qui remportent des médailles à leur première participation ?
+
+<p style="text-align:justify;">Pour répondre à cette question, nous avons souhaité représenter l’évolution du nombre d'athlètes qui remportent des médailles à leur premier Jeux. Encore une fois, nous avons souhaité séparer les jeux d’été et ceux d’hiver.</p>
+```{r viz_medal_first_participation, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement des données
+#on sélectionne les données souhaitées
+medalAtFirstParticipation <- d_athletes_lf_d_medals_lf_d_hosts %>% 
+  select(discipline_title,
+         slug_game,
+         medal_type,
+         athlete_full_name,
+         first_game,
+         game_season
+         )
+
+#on modifie la colonne first_game afin de faire le filtrage premier jeu/jeu joué
+medalAtFirstParticipation <- medalAtFirstParticipation %>%
+  filter(first_game == slug_game)
+
+#on compte le nombre d'athlètes concernés
+medalAtFirstParticipation <- medalAtFirstParticipation %>%
+  mutate(year = str_sub(slug_game, -4)) %>%
+  group_by(year, game_season) %>%
+  count(year)
+
+#ggplot
+medalAtFirstParticipation <- medalAtFirstParticipation %>%
+  ggplot(mapping = aes(x = year, y = n, colour = game_season, group = factor(game_season, levels = c("Summer", "Winter")))) + 
+  geom_line(position = "dodge") + 
+  scale_colour_manual(values=c("Summer" = "Orange", "Winter" = "steelblue")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  labs(title = "Évolution du nombre de médailles remportées par des athlètes participant pour la première fois aux JO", x = "Année", y = "Nombre de médailles", colour = "Saison")
+
+print(medalAtFirstParticipation)
+
+
+```
+<p style="text-align:justify;">Le nombre de médailles remportées par des athlètes participant pour la première fois aux JO est en augmentation pour les JO d’été mais on peut également constater une faible augmentation depuis 1994 pour les JO d’hiver. Ces augmentations s’expliquent certainement par le nombre d’épreuves toujours plus important comme nous l’avons constaté sur les graphiques “Sport lors des JO d’été depuis 1896” et “Sport lors des JO d’hiver depuis 1896”. On constate une perturbation en 1992/1994 pour les JO d’hiver. Cela correspond à la séparation des saisons des JO. Du côté des JO d’été, on constate également une perturbation à cette période mais cette perturbation ne semble pas significative.
+
+Lors des JO d’été, plusieurs centaines de nouveaux athlètes remportent une médaille. Cependant, lors des JO d’hiver, il y a entre 25 et 75 nouveaux athlètes qui obtiennent une médaille. Cette différence s’explique évidemment par la différence de nombre d’épreuves. 
+
+Ce graphique ne nous permet donc pas de répondre précisément à la question. Pour voir s’il y a une différence entre les JO d’été et les JO d’hiver, il faudrait étudier le pourcentage de nouveaux athlètes ayant obtenu une médaille. De même, il faudrait étudier l’évolution du pourcentage de nouveaux participants médaillés plutôt que d’étudier leur nombre. Nous n'avons malheureusement pas disposé du temps nécessaire pour poursuivre cette étude.</p>
+
+### Les pays accueillant remportent-ils plus de médailles lorsqu’ils hébergent les Jeux ?
+
+<p style="text-align:justify;">Cette question semble assez importante, notamment en ce qui concerne les questions de dopage. On pourrait en effet penser que le dopage est facilité pour les athlètes jouant à domicile. Au-delà du dopage, nous pouvons aussi penser que les athlètes à domicile sont avantagés. Ils pourraient par exemple être habitués à un climat particulier. Ils pourraient également avoir un public plus nombreux qui viendraient les supporter.</p>
+```{r viz_médailles_remportées_en_host, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on renomme certains pays qui n'ont pas la même dénomination suivant les colonnes
+medalsHostAndFrom <- d_athletes_lf_d_medals_lf_d_hosts %>%
+  select(game_name, game_location, country_name) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "United States", "United States of America", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "USSR", "Soviet Union", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "China", "People's Republic of China", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "Australia, Sweden", "Australia", as.character(game_location)))
+
+#on ajoute une colonne booléenne qui va permettre le filtrage et le décompte
+medalsHostAndFrom <- medalsHostAndFrom %>%
+  mutate(location_is_from = as.factor(game_location == country_name)) %>%
+  select(-game_name)
+
+#on compte les médailles récupérées en tant qu'host
+medalsHostAndFromTrue <- medalsHostAndFrom %>%
+  filter(location_is_from == TRUE) %>%
+  group_by(country_name) %>%
+  count(country_name) %>%
+  mutate(Organisateur = n) %>%
+  select(-n)
+
+#on compte les médailles récupérées sans être host
+medalsHostAndFromFalse <- medalsHostAndFrom %>%
+  filter(location_is_from == FALSE) %>%
+  group_by(country_name) %>%
+  count(country_name) %>%
+  mutate(Participant = n) %>%
+  select(-n)
+
+#on assemble les deux tableaux
+medalsHostAndFrom <- left_join(medalsHostAndFromTrue,medalsHostAndFromFalse,by ="country_name")
+
+#on calcule le pourcentage
+medalsHostAndFrom <- medalsHostAndFrom %>%
+  mutate(percentAsHost = round((Organisateur / (Organisateur + Participant)) * 100,1)) %>%
+  mutate(percentNotAsHost = 100 - percentAsHost)
+
+#on rassemble les colonnes
+medalsHostAndFrom <- medalsHostAndFrom %>% 
+  pivot_longer(Organisateur:Participant, names_to = "AsHost", values_to = "NumberOfMedals")
+
+#on rassemble les pourcentages
+medalsHostAndFrom <- medalsHostAndFrom %>%
+  mutate(percent = ifelse(AsHost == "Organisateur", percentAsHost, ifelse(AsHost != "Organisateur", percentNotAsHost, NA_integer_))) %>%
+  select(-percentAsHost, -percentNotAsHost, -NumberOfMedals)
+
+#ggplot
+medalsHostAndFrom <- medalsHostAndFrom %>%
+  ggplot(aes(x = country_name, y = percent, fill = AsHost)) + 
+  geom_bar(stat="identity") + 
+  geom_text(aes(label = paste(as.character(percent),"%", sep = "")), position = position_stack(vjust = 0), hjust=-0.1, size=3.5) +
+  labs(title = "Pourcentage de médailles obtenues par les pays organisateurs des JO", x = "Pays", y = "Pourcentage", fill = "Statut") +
+  coord_flip()
+
+print(medalsHostAndFrom)
+
+
+```
+<p style="text-align:justify;">Ce graphique représente le pourcentage de médailles obtenues par les pays organisateurs des JO lorsqu’ils étaient organisateurs et lorsqu’ils ne l’étaient pas. On remarque directement que certains pays semblent remporter énormément de médailles lorsqu’ils hébergent les JO. Cependant, ce graphique ne prend pas en compte le nombre de jeux hébergés par les pays. On peut cependant supposer que la Grèce n’a pas hébergé plus de 50% des JO. Le nombre de médailles qu’elle a obtenu est donc difficilement explicable. D’autres pays tels que les États-Unis, le Royaume Uni et la Belgique se démarquent également avec plus de 20% de leurs médailles obtenues lorsqu’ils hébergaient les JO. Pour pouvoir exploiter ce graphique, il faut savoir quel pourcentage de jeux chaque pays a hébergé. Il est plus intéressant de passer par des pourcentages car tous les pays n’ont pas participé au même nombre de jeux et on pourra garder un graphique ayant la même allure. Si l’hébergement des jeux n’apporte pas d’avantage, on devrait obtenir deux graphiques similaires. Dans le cas contraire, il faut voir si l’écart de pourcentage est important.</p>
+```{r viz_games_as_host, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on renomme certains pays qui n'ont pas la même dénomination suivant les colonnes
+percentAsHost <- d_results_lf_d_hosts %>%
+  select(game_name, game_location, country_name) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "United States", "United States of America", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "USSR", "Soviet Union", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "China", "People's Republic of China", as.character(game_location))) %>%
+  mutate(game_location = ifelse(as.character(game_location) == "Australia, Sweden", "Australia", as.character(game_location)))
+
+#on ajoute une colonne booléenne qui va permettre le filtrage et le décompte
+percentAsHost <- percentAsHost %>%
+  mutate(location_is_from = as.factor(game_location == country_name))
+
+#on compte le nombre d'host pour chaque pays
+percentAsHostTrue <- percentAsHost %>%
+  filter(location_is_from == TRUE) %>%
+  distinct() %>%
+  group_by(country_name) %>%
+  count(country_name) %>%
+  mutate(orga = n) %>%
+  select(-n)
+
+#on compte le nombre de participations sans être host pour chaque pays
+percentAsHostFalse <- percentAsHost %>%
+  filter(location_is_from == FALSE) %>%
+  distinct() %>%
+  group_by(country_name) %>%
+  count(country_name) %>%
+  mutate(notOrga = n) %>%
+  select(-n)
+
+#on assemble les deux tableaux
+percentAsHost <- left_join(percentAsHostTrue, percentAsHostFalse, by ="country_name")
+
+#on calcule le pourcentage
+percentAsHost <- percentAsHost %>%
+  mutate(Organisateur = round((orga / (orga + notOrga)) * 100,1)) %>%
+  mutate(Participant = 100 - Organisateur)
+
+#on retire les colonnes inutiles
+percentAsHost <- percentAsHost %>%
+  select(-orga, -notOrga)
+
+#on rassemble les colonnes
+percentAsHost <- percentAsHost %>% 
+  pivot_longer(Organisateur:Participant, names_to = "AsHost", values_to = "percent")
+
+#ggplot
+percentAsHost <- percentAsHost %>%
+  ggplot(aes(x = country_name, y = percent, fill = AsHost)) + 
+  geom_bar(stat="identity") + 
+  geom_text(aes(label = paste(as.character(percent),"%", sep = "")), position = position_stack(vjust = 0), hjust=-0.1, size=3.5) +
+  labs(title = "Pourcentage de JO organisés par pays", x = "Pays", y = "Pourcentage", fill = "Statut") +
+  coord_flip()
+
+
+print(percentAsHost)
+
+
+```
+<p style="text-align:justify;">Ce graphique représente le pourcentage de JO hébergés par chaque pays ainsi que le pourcentage de JO qu’ils n’ont pas hébergés. Certains pays semblent avoir hébergé beaucoup plus d’éditions que les autres. Les États-Unis ont en effet hébergé plus de 15% des JO auxquels ils ont participé, le Japon et la France et l’ex Allemagne de l’Est s’approchent des 10%. Ce graphique est surtout utile pour effectuer une comparaison avec le graphique précédent. Un faible écart entre les deux graphiques devrait indiquer que l’hébergement des JO n’est pas avantageux. Cependant, on constate ici un écart important pour certains pays. Le premier cas intéressant à étudier est la Grèce. Ce pays a hébergé moins de 5% des JO auxquels il a participé mais a gagné 53% de ses médailles lors de ces quelques JO. Plus globalement, pour la plupart des pays, il semblerait que le pourcentage de médailles obtenues lorsqu’ils organisaient les JO était significativement supérieur au pourcentage de JO qu’ils avaient organisé. Par exemple, les Royaume Uni a obtenu 25% de ses médailles lorsqu’ils organisaient les JO alors qu’ils ont hébergé moins de 7% des jeux auxquels ils ont participé. Le fait d’héberger les jeux semble donc donner un avantage.
+
+Cette visualisation a fait émerger une nouvelle question : Pourquoi la Grèce a-t-elle gagné 53% des médailles durant son hébergement des JO. Nous avons effectué une heatmap contenant le nombre de participant de chaque pays à chaque discipline lors des JO d'Athènes en 1896 :</p>
+
+```{r viz_heatmap, echo=FALSE, fig.height = 10, fig.width = 12}
+
+
+#traitement local des données
+#on sélectionne les données utiles
+heatmap <- data_results %>%
+  filter(slug_game == 'athens-1896') %>%
+  select(discipline_title, country_name)
+
+#on compte le nombre de participations
+heatmap <- heatmap %>%
+  group_by(discipline_title, country_name) %>%
+  count(discipline_title) %>%
+  ungroup()
+
+#on complète le tableau par des valeurs NA pour pouvoir les afficher sur la heatmap
+heatmap <- heatmap %>%
+  complete(discipline_title, country_name)
+
+#on remplace les NA générés avec le complete par des 0
+heatmap[is.na(heatmap)] <- 0
+
+#ggplot
+heatmap <- heatmap %>%
+  ggplot(aes(discipline_title, country_name, fill=n)) +
+  geom_tile() +
+  scale_fill_continuous(na.value = '#10253a') +
+  xlab("") +
+  ylab("") +
+  labs(title = "Participation par pays et par discipline aux JO d'athènes en 1896") +
+  guides(fill = guide_colourbar(title = "Participations")) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(family = "Helvetica", face = "bold", size = (15)),
+      panel.grid.minor = element_line(color ="grey",
+                                        size = 0.3,
+                                        linetype=1)
+      ,panel.grid.major.y = element_line(color ="grey",
+                                            size = 0.3,
+                                            linetype=2)
+        )
+
+print(heatmap)
+```
+<p style="text-align:justify;">On remarque tout d'abord que la Grèce a participé à toutes les épreuves de ce premier JO contrairement à d’autres pays. De plus, elle possède autant voire plus de participants que les autres pays à chaque épreuve durant ce premier JO. Elle avait donc plus de chances de remporter des médailles à chaque épreuve. Avec toutes ces conditions réunies, la Grèce a en effet remporté plus de 40 médailles lors de Jeux d’Athènes en 1896. Depuis, son total de médailles ne s’élève qu’à environ 120.
+
+Cette heatmap nous explique ainsi le pourcentage élevé de médailles obtenues par la Grèce lors des JO qu'elle hébergeait.</p>
+
+## Conclusion 
+
+<p style="text-align:justify;">À travers ce projet, nous nous sommes posés de nombreuses questions sur les Jeux olympiques et avons tiré des enseignement sur de nombreux points :
+
+- Le nombre de médailles dans une discipline est corrélé au nombre d’épreuves de cette discipline : La comparaison d’athlètes ou de pays les plus titrés devient donc inégale toutes disciplines confondues.
+
+- Les pays développés semblent concentrés sur les JO d’été là où les pays nordiques brillent aux JO d’hiver. 
+
+- L’âge semble être un paramètre important dans certaine discipline, un âge faible étant associé à des disciplines récentes et dangereuses tandis qu’un âge avancé s’associe à des épreuves demandant de la pratique, de l’expérience.
+
+- La longévité des épreuves est une variable très fluctuante, des épreuves durant des dizaines d’années et d’autres durant un seul JO.
+
+- La répartition des médailles est corrélé avec le PIB des pays, les pays développés possédant beaucoup de médailles et les pays sous-développés n’en possédant peu.
+
+- Le nombre de pays participants est en constante augmentation, sauf en cas d’évènements extérieurs
+
+- Les Jeux d’été sont beaucoup plus attractifs que les Jeux d’hiver
+
+- Le fait d’organiser les Jeux donne un net avantage pour les athlètes du pays organisateur
+
+
+Si ce dataset nous a permis de récolter beaucoup d’informations et de réponses à nos questions, il n’en reste pas moins que cette récolte de données a été fastidieuse sur plusieurs points : Tout d’abord, notre jeu de données était divisé en 4 csv. Si cette division est tout à fait logique, cela a quand même été un handicap lors de certaines jointures. Concernant également ces csv, une difficulté rencontrée était de travailler avec alors que ces derniers n’étaient pas complets : Beaucoup de données NA étaient présentes dans les csv, empêchant certaines visualisations. Enfin, la plupart des données se retrouvaient dans plusieurs csv voir dans le même csv sous plusieurs formes.
+
+Nous pouvons donc attendre quelques évolutions quant à ce dataset : Dans un premier temps, il faudrait compléter les csv afin d’avoir 100% de données complètes et exploitables, nous pensons notamment aux résultats des athlètes dans chaque discipline qui aurait pu nous permettre de discuter à propos de la difficulté à battre certains records, l’évolution du temps moyen dans des épreuves etc. En plus de cela, il faudrait améliorer le dataset en ajoutant de nouvelles caractéristiques comme par exemple le poids d’un athlète, sa taille etc.
+
+Matthieu :
+
+> J’ai personnellement appris à réaliser des graphiques diversifiés, notamment des bar chart, des stacked bar chart, une heat map ou encore des line chart. J’ai donc beaucoup réfléchi aux meilleures visualisations possibles pour répondre à une question précise. J’ai cependant été déçu de ne pas avoir plus de données exploitables dans notre jeu de données. Nous avons été assez rapidement limités.
+
+</p>
